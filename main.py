@@ -169,12 +169,18 @@ def main() -> None:
 
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("run", help="Full daily pipeline")
-    sub.add_parser("screenshots", help="Take screenshots only")
-    sub.add_parser("extract", help="Extract from today's screenshots")
-    sub.add_parser("report", help="Print today's report (no email)")
-    sub.add_parser("test-email", help="Send a test email")
-    sub.add_parser("history", help="Last 7 days for all platforms")
+    for name, helptext in [
+        ("run", "Full daily pipeline"),
+        ("screenshots", "Take screenshots only"),
+        ("extract", "Extract from today's screenshots"),
+        ("report", "Print today's report (no email)"),
+        ("test-email", "Send a test email"),
+        ("history", "Last 7 days for all platforms"),
+    ]:
+        sp = sub.add_parser(name, help=helptext)
+        sp.add_argument("--date", help="Override date (YYYY-MM-DD), default today")
+        sp.add_argument("--no-email", action="store_true", help="Skip sending email")
+        sp.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
 

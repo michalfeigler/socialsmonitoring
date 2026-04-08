@@ -59,7 +59,10 @@ def extract_follower_count(screenshot_path: str, platform_name: str, selector_hi
     )
 
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client_kwargs = {}
+        if ANTHROPIC_API_KEY:
+            client_kwargs["api_key"] = ANTHROPIC_API_KEY
+        client = anthropic.Anthropic(**client_kwargs)
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,

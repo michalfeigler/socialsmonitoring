@@ -16,6 +16,24 @@ USER_AGENT = (
 )
 
 
+def _proxy_settings() -> dict | None:
+    """Build Playwright proxy settings from environment variables."""
+    server = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") \
+        or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    if not server:
+        return None
+    # Playwright expects {server, username, password} — parse user:pass@host from URL
+    # Format: http://user:pass@host:port
+    from urllib.parse import urlparse
+    parsed = urlparse(server)
+    settings = {"server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"}
+    if parsed.username:
+        settings["username"] = parsed.username
+    if parsed.password:
+        settings["password"] = parsed.password
+    return settings
+
+
 def take_screenshot(url: str, platform_name: str, output_dir: str = "screenshots", page=None) -> str:
     """Navigate to *url* using Playwright and save a full-page screenshot.
 
@@ -40,7 +58,12 @@ def take_screenshot(url: str, platform_name: str, output_dir: str = "screenshots
     try:
         if owns_browser:
             pw_context = sync_playwright().start()
-            browser = pw_context.chromium.launch(headless=True)
+            launch_kwargs = {"headless": True}
+            proxy = _proxy_settings()
+            if proxy:
+                launch_kwargs["proxy"] = proxy
+                launch_kwargs.setdefault("args", []).append("--ignore-certificate-errors")
+            browser = pw_context.chromium.launch(**launch_kwargs)
             context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 user_agent=USER_AGENT,
@@ -104,7 +127,12 @@ def take_all_screenshots(platforms: list | None = None) -> dict:
     results = {}
 
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=True)
+    launch_kwargs = {"headless": True}
+    proxy = _proxy_settings()
+    if proxy:
+        launch_kwargs["proxy"] = proxy
+        launch_kwargs.setdefault("args", []).append("--ignore-certificate-errors")
+    browser = pw.chromium.launch(**launch_kwargs)
     context = browser.new_context(
         viewport={"width": 1920, "height": 1080},
         user_agent=USER_AGENT,
