@@ -1,0 +1,116 @@
+name: "Taking Over - Social Tracker"
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # 7:00 UTC = 9:00 CEST
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        type: choice
+        options:
+          - run
+          - test-email
+          - screenshots-only
+        default: run
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── Setup ───────────────────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      # ── Restore DB from data-store branch ───────────────────
+      - name: Restore tracker.db
+        run: |
+          git fetch origin data-store || echo "data-store branch not found — first run"
+          git checkout origin/data-store -- data/tracker.db 2>/dev/null || echo "No existing tracker.db — starting fresh"
+
+      # ── Run tracker ─────────────────────────────────────────
+      - name: Run tracker
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'run' }}"
+          case "$MODE" in
+            run)
+              python main.py run --verbose 2>&1 | tee run.log
+              ;;
+            test-email)
+              python main.py test-email --verbose 2>&1 | tee run.log
+              ;;
+            screenshots-only)
+              python main.py screenshots --verbose 2>&1 | tee run.log
+              ;;
+          esac
+
+      # ── Persist DB to data-store branch ─────────────────────
+      - name: Push tracker.db to data-store branch
+        if: always()
+        run: |
+          # Only push if the DB file exists
+          if [ ! -f data/tracker.db ]; then
+            echo "No tracker.db to push — skipping"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check out data-store branch or create it as an orphan
+          if git fetch origin data-store 2>/dev/null; then
+            git checkout data-store
+          else
+            git checkout --orphan data-store
+            git rm -rf . 2>/dev/null || true
+          fi
+
+          # Stage and commit the DB
+          mkdir -p data
+          cp "$GITHUB_WORKSPACE/data/tracker.db" data/tracker.db 2>/dev/null \
+            || cp data/tracker.db data/tracker.db  # already in place
+          git add data/tracker.db
+          git diff --cached --quiet && echo "No DB changes — skipping push" && exit 0
+          git commit -m "Update tracker.db — $(date -u +%Y-%m-%d)"
+          git push origin data-store
+
+      # ── Upload artifacts ────────────────────────────────────
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.run_id }}
+          path: screenshots/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-log-${{ github.run_id }}
+          path: run.log
+          retention-days: 14
+          if-no-files-found: ignore
