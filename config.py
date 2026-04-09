@@ -55,7 +55,7 @@ PLATFORMS = [
     },
     {
         "name": "X",
-        "url": "https://x.com/takingvercz",
+        "url": "https://x.com/takingovercz",
         "selector_hint": "followers",
     },
 ]
